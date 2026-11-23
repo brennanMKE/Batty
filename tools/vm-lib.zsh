@@ -184,7 +184,9 @@ vm_boot() {
   boot_start=$SECONDS
   # --no-audio: without it Tart routes guest audio to the host output (e.g. the
   # notification sound from `batty notify --sound`). No UI test depends on sound.
-  tart run "$clone" --no-graphics --no-audio --dir=run:"$share":ro >"$runlog" 2>&1 &
+  # --no-clipboard: otherwise the host's clipboard is mirrored into the guest,
+  # leaking it into the VM and making pasteboard-dependent tests host-dependent.
+  tart run "$clone" --no-graphics --no-audio --no-clipboard --dir=run:"$share":ro >"$runlog" 2>&1 &
   TART_RUN_PID=$!
   boot_deadline=$(( SECONDS + timeout ))
   until tart exec "$clone" true >/dev/null 2>&1; do

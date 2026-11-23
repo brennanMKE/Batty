@@ -31,4 +31,28 @@ extension AppStateStore {
         }
         return .unresolved(tabID: tabID)
     }
+
+    /// Routes `tab`'s clipboard confirmations through the app-wide read
+    /// Setting, then the owning Session's per-kind policy (#0390, #0674).
+    /// Setting the route also forwards any request held before it ran. No
+    /// resolvable store, tab or Session denies. `[weak tab]` avoids a retain
+    /// cycle: the closure is stored on `tab.terminalDelegate`, which
+    /// `TabRuntime` owns. Lives here rather than in `PaneView` so unit tests
+    /// exercise the production closure (#0436).
+    public func wireClipboardConfirmation(for tab: TabRuntime) {
+        tab.terminalDelegate.onClipboardReadConfirmationRequest = { [weak self, weak tab] kind, decide in
+            guard let self, let tab else {
+                decide(false)
+                return
+            }
+            let session = tab.sessionID.flatMap { self.session(id: $0) }
+            routeClipboardConfirmation(
+                to: session,
+                kind: kind,
+                readPolicy: self.clipboardReadPolicy,
+                context: self.clipboardRequestContext(forTabID: tab.id),
+                decide: decide
+            )
+        }
+    }
 }

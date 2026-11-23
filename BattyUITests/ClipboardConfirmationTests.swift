@@ -1,5 +1,6 @@
 // ClipboardConfirmationTests.swift
 
+import AppKit
 import XCTest
 
 /// OSC 52 clipboard reads: the default Setting (Never) denies silently, and
@@ -19,8 +20,18 @@ nonisolated final class ClipboardConfirmationTests: XCTestCase {
         BattyUITestHarness.sweepSentinels()
     }
 
+    /// libghostty asks Batty to confirm a read only when the pasteboard holds
+    /// text; with it empty the read is answered "unavailable" upstream and the
+    /// delegate never runs. Seed it so every test exercises the confirmation path.
+    @MainActor
+    private func seedPasteboard() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString("batty-uitest-clipboard-\(UUID().uuidString)", forType: .string)
+    }
+
     @MainActor
     private func splitRunning(_ body: String, named name: String, beside paneID: UUID, scratch: URL) throws {
+        seedPasteboard()
         let script = try BattyCLI.makeScript(in: scratch, named: name, body: body)
         BattyCLI.runExpectingSuccess(["pane", "split", "-h", "--pane", paneID.uuidString, "--command", script])
     }

@@ -68,8 +68,12 @@ final class TerminalDelegateProxy: NSObject,
     /// OSC 52 read/write). Wired by `PaneView` (which has the owning
     /// `SessionRuntime` this proxy doesn't) to
     /// `SessionRuntime.requestClipboardReadConfirmation(kind:decide:)`.
-    /// If nothing has wired this yet, `resolveClipboardConfirmationRoute`
-    /// denies immediately rather than leaving the request unanswered.
+    /// The surface and its child process start before `PaneView` wires
+    /// this, so a request that arrives first is held (at most
+    /// `maxHeldClipboardRequests`) and forwarded, in arrival order, when
+    /// this is set to a non-nil handler. See
+    /// `resolveClipboardConfirmationRoute` for how a held request is always
+    /// answered.
     ///
     /// Upstream's `TerminalClipboardConfirmationRequest` carries only
     /// `contents`/`kind` — no program name and no per-request `canRemember`
@@ -81,7 +85,36 @@ final class TerminalDelegateProxy: NSObject,
     /// something upstream opts a request into or out of.
     var onClipboardReadConfirmationRequest: (
         (TerminalClipboardRequestKind, @escaping (Bool) -> Void) -> Void
-    )?
+    )? {
+        didSet {
+            guard let onClipboardReadConfirmationRequest, !heldClipboardRequests.isEmpty else { return }
+            // Swapped out first so a handler that re-enters the proxy never
+            // sees a half-drained hold.
+            let held = heldClipboardRequests
+            heldClipboardRequests = []
+            for request in held {
+                onClipboardReadConfirmationRequest(request.kind, request.respond)
+            }
+        }
+    }
+
+    static let maxHeldClipboardRequests = 4
+    private var heldClipboardRequests: [(kind: TerminalClipboardRequestKind, respond: (Bool) -> Void)] = []
+    private var clipboardRoutingClosed = false
+    var heldClipboardRequestCount: Int { heldClipboardRequests.count }
+
+    /// Denies every held clipboard request and closes the hold, so a request
+    /// that arrives afterwards (during teardown) is denied at once. Called
+    /// by `TerminalHostStore.releaseTerminalView(forTabID:)` before the
+    /// surface is freed. Idempotent.
+    func denyHeldClipboardRequests() {
+        clipboardRoutingClosed = true
+        let held = heldClipboardRequests
+        heldClipboardRequests = []
+        for request in held {
+            request.respond(false)
+        }
+    }
 
     /// True once libghostty has reported any working directory. The first
     /// report (OSC 7 from the bundled shell integration's prompt hook) is
@@ -259,23 +292,36 @@ final class TerminalDelegateProxy: NSObject,
         }
     }
 
-    /// The fail-open leg this proxy must never get wrong: with no route
-    /// wired, `respond` must be called with `false`, not left uncalled and
-    /// not defaulted to `true`. Pulled out of
-    /// `terminalDidRequestClipboardConfirmation` so it has direct test
-    /// coverage — `TerminalClipboardConfirmationRequest`'s initializer is
-    /// `internal` to `GhosttyTerminal`, so BattyKit tests cannot construct
-    /// one to exercise the real delegate method directly.
+    /// Never allows without a route. With no route wired yet the request
+    /// is held until `onClipboardReadConfirmationRequest` is set; once
+    /// `maxHeldClipboardRequests` are held, or after
+    /// `denyHeldClipboardRequests()`, it is denied at once. There is no
+    /// time deadline: the route is wired when the Pane's view appears, and
+    /// a Tab that never appears is released (which denies the hold) or
+    /// deallocated (upstream's request `deinit` denies an unanswered one).
+    /// Pulled out of `terminalDidRequestClipboardConfirmation` so it has
+    /// direct test coverage — `TerminalClipboardConfirmationRequest`'s
+    /// initializer is `internal` to `GhosttyTerminal`, so BattyKit tests
+    /// cannot construct one to exercise the real delegate method directly.
     func resolveClipboardConfirmationRoute(
         kind: TerminalClipboardRequestKind,
         respond: @escaping (Bool) -> Void
     ) {
-        guard let onClipboardReadConfirmationRequest else {
-            logger.warning("clipboard confirmation with no route wired — denying")
+        if let onClipboardReadConfirmationRequest {
+            onClipboardReadConfirmationRequest(kind, respond)
+            return
+        }
+        if clipboardRoutingClosed {
             respond(false)
             return
         }
-        onClipboardReadConfirmationRequest(kind, respond)
+        guard heldClipboardRequests.count < Self.maxHeldClipboardRequests else {
+            logger.warning("clipboard confirmation denied: \(Self.maxHeldClipboardRequests, privacy: .public) already held before route wired")
+            respond(false)
+            return
+        }
+        heldClipboardRequests.append((kind: kind, respond: respond))
+        logger.notice("clipboard confirmation held until route wired tab=\(self.tabID?.uuidString ?? "unknown", privacy: .public)")
     }
 
     func terminalDidUpdateHoverLink(_ url: String?) {

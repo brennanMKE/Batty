@@ -260,28 +260,14 @@ public struct PaneView: View {
                             // Stays wired after this view unmounts, so a
                             // hidden Pane's bells still record.
                             appStore?.wireBellReporting(for: tab)
-                            // #0390, #0674: route a clipboard confirmation
-                            // (OSC 52 / Kitty clipboard protocol) through the
-                            // app-wide read Setting, then this tab's owning
-                            // Session's per-kind policy. No resolvable store,
-                            // tab or Session denies, so a tab that closes
-                            // before this wiring runs can't leave a request
-                            // unanswered. `[weak tab]` avoids a retain cycle:
-                            // this closure is stored on `tab.terminalDelegate`,
-                            // which `TabRuntime` owns.
-                            tab.terminalDelegate.onClipboardReadConfirmationRequest = { [weak appStore, weak tab] kind, decide in
-                                guard let appStore, let tab else {
-                                    decide(false)
-                                    return
-                                }
-                                let session = tab.sessionID.flatMap { appStore.session(id: $0) }
-                                routeClipboardConfirmation(
-                                    to: session,
-                                    kind: kind,
-                                    readPolicy: appStore.clipboardReadPolicy,
-                                    context: appStore.clipboardRequestContext(forTabID: tab.id),
-                                    decide: decide
-                                )
+                            // Route clipboard confirmations through the read
+                            // Setting, then the Session. Requests held before
+                            // this runs are routed now. Without a store
+                            // (previews, tests) deny rather than hold.
+                            if let appStore {
+                                appStore.wireClipboardConfirmation(for: tab)
+                            } else {
+                                tab.terminalDelegate.onClipboardReadConfirmationRequest = { _, decide in decide(false) }
                             }
                             // Initial resolve in case the surface reported its cwd
                             // before this wiring ran (the callback only catches

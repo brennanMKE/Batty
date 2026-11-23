@@ -298,8 +298,9 @@ the file extension) and strips the `_<n>_<UUID>` Xcode appends.
    different SlidingTabs commit than a previous run if that sibling repo has moved. This is
    a known limitation; pinning it (e.g. to a tag, or vendoring a snapshot) is left to a
    follow-up if it ever causes a hard-to-reproduce guest-only failure.
-3. **Clone and boot** headless and muted, `--no-graphics --no-audio --dir=run:"$EXPORT":ro`
-   (read-only). `--no-audio` is Tart's "Disable audio pass-through to host": `--no-graphics`
+3. **Clone and boot** headless and muted, `--no-graphics --no-audio --no-clipboard --dir=run:"$EXPORT":ro`
+   (read-only). `--no-clipboard` stops Tart mirroring the host's clipboard into the guest, so the
+   host clipboard never reaches a test VM and pasteboard-dependent tests (#0720) don't depend on it. `--no-audio` is Tart's "Disable audio pass-through to host": `--no-graphics`
    only drops the window, so without the flag the guest's audio device still exists and every
    sound the guest makes plays on the host's output (lowering the host volume lowers it). The
    one test confirmed to ask for sound is
