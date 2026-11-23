@@ -27,6 +27,25 @@
         Newest item must come first — Sparkle ranks by sparkle:version.
     -->
     <item>
+      <title>1.4.3</title>
+      <pubDate>Mon, 23 Nov 2026 00:00:00 +0000</pubDate>
+      <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>
+      <sparkle:releaseNotesLink>https://batty.sstools.co/changelog.html#v1-4-3</sparkle:releaseNotesLink>
+      <description><![CDATA[
+        <h2>Save as Project applies to the Session you saved from</h2>
+        <p>After Save as Project or Save as New Project, the Session you saved becomes a Session of that Project right away, with the Project's icon, color, name, Theme and backgrounds. Your terminals keep running.</p>
+        <h2>The command-line tool keeps working after an update</h2>
+        <p>If you turned on the command-line tool or MCP server in Settings, its background helper now restarts itself when an update replaces it.</p>
+      ]]></description>
+      <enclosure
+        url="https://batty.sstools.co/downloads/Batty-1.4.3.dmg"
+        sparkle:version="202611230214"
+        sparkle:shortVersionString="1.4.3"
+        sparkle:edSignature="qbtJcDPBB68tzwjFvAhLqUtWtngUDNauROmfMB/gMkInfve0YqBVe/1twmlmpmAwNmTQqe3rPaQkLFErC/7rAA=="
+        length="29336619"
+        type="application/octet-stream" />
+    </item>
+    <item>
       <title>1.4.2</title>
       <pubDate>Sat, 21 Nov 2026 00:00:00 +0000</pubDate>
       <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>

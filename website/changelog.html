@@ -15,6 +15,23 @@
         <h1>Changelog</h1>
     </header>
     <main class="changelog">
+        <article id="v1-4-3">
+            <h2>1.4.3 — 2026-11-22</h2>
+            <p class="meta">Saving a Session as a Project now applies the Project to that Session, and the command-line tool keeps working after an update.</p>
+            <h3>Fixes</h3>
+            <ul>
+                <li><strong>Save as Project applies to the Session you saved from.</strong> After Save as Project&hellip; or
+                Save as New Project&hellip;, the Session you saved becomes a Session of that Project right away: it takes the
+                Project's icon, color, name, Theme and backgrounds, including Pane and Tab backgrounds and their opacity,
+                and any changes you made in the Project Editor before saving. Its Sidebar menu shows Edit Project&hellip; and
+                Update, Open Project switches to it instead of opening a second copy, and later Project edits reach it.
+                Your terminals keep running. (#0712)</li>
+                <li><strong>The command-line tool keeps working after an update.</strong> If you turned on the command-line
+                tool or MCP server in Settings, <code>batty</code> commands and agent tools could stop reaching Batty after
+                an update until you logged out. Their background helper now restarts itself when an update replaces it.
+                (#0719)</li>
+            </ul>
+        </article>
         <article id="v1-4-2">
             <h2>1.4.2 — 2026-11-20</h2>
             <p class="meta">Project background edits now reach the Sessions you already have open.</p>
