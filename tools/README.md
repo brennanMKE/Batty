@@ -5,6 +5,9 @@ Unlike `scripts/` (release pipeline, restricted per `AGENTS.md`), this
 directory holds ad-hoc developer tooling that doesn't need release-process
 review.
 
+`release-cleanup-selftest.py` checks that `scripts/release.sh` removes only its own
+paths under `build/` (`scripts/release-cleanup.sh`, #0721).
+
 ## run-ui-tests-vm.sh
 
 Runs `BattyUITests` inside a disposable Tart VM (#0412). UI tests never run
