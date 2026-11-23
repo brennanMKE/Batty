@@ -83,6 +83,8 @@ final class SessionSidebarOutlineView: NSOutlineView {}
 final class SessionSidebarCoordinator: NSObject, NSOutlineViewDataSource, NSOutlineViewDelegate {
     private static let sessionCellID = NSUserInterfaceItemIdentifier("session-cell")
     private static let paneCellID = NSUserInterfaceItemIdentifier("pane-cell")
+    static let railCellID = NSUserInterfaceItemIdentifier("rail-cell")
+    static let railRowHeight: CGFloat = 40
 
     let windowRuntime: WindowRuntime
     let store: AppStateStore
@@ -96,6 +98,10 @@ final class SessionSidebarCoordinator: NSObject, NSOutlineViewDataSource, NSOutl
     /// Set while `apply` drives the outline, so the selection and expansion
     /// notifications AppKit posts for those calls are not read as the user's.
     private var applyingModelChange = false
+    /// The `WindowRuntime.sidebarStyle` the outline is configured for.
+    private(set) var presentedStyle: SidebarStyle = .names
+    /// The names layout's row metrics, kept while the rail replaces them.
+    private var namesRowMetrics: (sizeStyle: NSTableView.RowSizeStyle, height: CGFloat)?
 
     init(windowRuntime: WindowRuntime, store: AppStateStore, style: SidebarRowStyle, actions: SidebarRowActions) {
         self.windowRuntime = windowRuntime
@@ -124,7 +130,14 @@ final class SessionSidebarCoordinator: NSObject, NSOutlineViewDataSource, NSOutl
         let livePanes = Dictionary(uniqueKeysWithValues: liveSessions.map {
             (ObjectIdentifier($0), $0.tree.panesSortedByColumnThenRow)
         })
-        if liveSessions.map(ObjectIdentifier.init) != sessions.map(ObjectIdentifier.init) {
+        let liveStyle = windowRuntime.sidebarStyle
+        if liveStyle != presentedStyle {
+            presentedStyle = liveStyle
+            configureOutline(outline, for: liveStyle)
+            sessions = liveSessions
+            panes = livePanes
+            outline.reloadData()
+        } else if liveSessions.map(ObjectIdentifier.init) != sessions.map(ObjectIdentifier.init) {
             sessions = liveSessions
             panes = livePanes
             outline.reloadData()
@@ -139,7 +152,9 @@ final class SessionSidebarCoordinator: NSObject, NSOutlineViewDataSource, NSOutl
             }
         }
 
-        for session in sessions where session.isPaneListExpanded != outline.isItemExpanded(session) {
+        // The rail shows no Pane rows, so it leaves each Session's expanded
+        // state alone; back in names this loop re-expands from the model.
+        for session in sessions where !isRail && session.isPaneListExpanded != outline.isItemExpanded(session) {
             if session.isPaneListExpanded {
                 outline.expandItem(session)
             } else {
@@ -167,11 +182,36 @@ final class SessionSidebarCoordinator: NSObject, NSOutlineViewDataSource, NSOutl
         }
     }
 
+    private var isRail: Bool { presentedStyle == .symbols }
+
+    private func configureOutline(_ outline: NSOutlineView, for style: SidebarStyle) {
+        switch style {
+        case .symbols:
+            if namesRowMetrics == nil {
+                namesRowMetrics = (outline.rowSizeStyle, outline.rowHeight)
+            }
+            outline.style = .plain
+            outline.indentationPerLevel = 0
+            outline.rowSizeStyle = .custom
+            outline.rowHeight = Self.railRowHeight
+        case .names:
+            outline.style = .sourceList
+            if let metrics = namesRowMetrics {
+                outline.rowSizeStyle = metrics.sizeStyle
+                outline.rowHeight = metrics.height
+                namesRowMetrics = nil
+            }
+            // After the row size: a source list re-derives its indentation
+            // when the row size style changes.
+            outline.indentationPerLevel = 12
+        }
+    }
+
     // MARK: - Data source
 
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
         guard let item else { return sessions.count }
-        guard let session = item as? SessionRuntime else { return 0 }
+        guard !isRail, let session = item as? SessionRuntime else { return 0 }
         return panes[ObjectIdentifier(session)]?.count ?? 0
     }
 
@@ -182,7 +222,7 @@ final class SessionSidebarCoordinator: NSObject, NSOutlineViewDataSource, NSOutl
 
     /// Every Session has a disclosure triangle, single-Pane ones included.
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
-        item is SessionRuntime
+        !isRail && item is SessionRuntime
     }
 
     // MARK: - Rows and cells
@@ -194,7 +234,7 @@ final class SessionSidebarCoordinator: NSObject, NSOutlineViewDataSource, NSOutl
     }
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
-        let identifier = item is SessionRuntime ? Self.sessionCellID : Self.paneCellID
+        let identifier = isRail ? Self.railCellID : item is SessionRuntime ? Self.sessionCellID : Self.paneCellID
         let cell: SidebarCellHostingView
         if let reused = outlineView.makeView(withIdentifier: identifier, owner: nil) as? SidebarCellHostingView {
             cell = reused
@@ -210,10 +250,19 @@ final class SessionSidebarCoordinator: NSObject, NSOutlineViewDataSource, NSOutl
     private func styleRowView(_ rowView: SidebarOutlineRowView, isSessionRow: Bool) {
         rowView.fill = style.sidebarFill.map(NSColor.init)
         rowView.tint = isSessionRow ? style.selectionTint.map(NSColor.init) : nil
+        rowView.isRail = isRail
     }
 
     private func configure(_ cell: SidebarCellHostingView, for item: Any) {
-        if let session = item as? SessionRuntime {
+        if isRail, let session = item as? SessionRuntime {
+            cell.content = SessionSidebarView.railCell(
+                session: session,
+                store: store,
+                windowRuntime: windowRuntime,
+                accent: style.accent,
+                actions: { [weak self] in self?.actions ?? SidebarRowActions() }
+            )
+        } else if let session = item as? SessionRuntime {
             cell.content = SessionSidebarView.sessionCell(
                 session: session,
                 store: store,
@@ -392,6 +441,15 @@ final class SidebarOutlineRowView: NSTableRowView {
     var tint: NSColor? {
         didSet { needsDisplay = true }
     }
+    /// The symbols-only rail draws its own rounded selection with a ring,
+    /// since the bold name that marks the selected row is gone.
+    var isRail = false {
+        didSet {
+            guard isRail != oldValue else { return }
+            needsDisplay = true
+            syncCellEmphasis()
+        }
+    }
 
     override var isSelected: Bool {
         didSet { syncCellEmphasis() }
@@ -401,7 +459,7 @@ final class SidebarOutlineRowView: NSTableRowView {
     }
 
     override var interiorBackgroundStyle: NSView.BackgroundStyle {
-        fill == nil ? super.interiorBackgroundStyle : .normal
+        fill == nil && !isRail ? super.interiorBackgroundStyle : .normal
     }
 
     override func didAddSubview(_ subview: NSView) {
@@ -427,6 +485,17 @@ final class SidebarOutlineRowView: NSTableRowView {
     }
 
     override func drawSelection(in dirtyRect: NSRect) {
+        if isRail {
+            let shape = NSBezierPath(roundedRect: bounds.insetBy(dx: 6, dy: 2), xRadius: 8, yRadius: 8)
+            let color = tint ?? NSColor.controlAccentColor.withAlphaComponent(0.25)
+            color.setFill()
+            shape.fill()
+            (tint ?? NSColor.controlAccentColor).withAlphaComponent(0.8).setStroke()
+            let ring = NSBezierPath(roundedRect: bounds.insetBy(dx: 6.5, dy: 2.5), xRadius: 7.5, yRadius: 7.5)
+            ring.lineWidth = 1
+            ring.stroke()
+            return
+        }
         guard fill != nil else {
             super.drawSelection(in: dirtyRect)
             return

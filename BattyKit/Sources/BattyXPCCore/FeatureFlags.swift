@@ -10,10 +10,12 @@ nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: 
 public nonisolated struct FeatureFlags: Sendable, Equatable {
     public var sharedProjectImages: Bool
     public var servers: Bool
+    public var compactSidebar: Bool
 
-    public init(sharedProjectImages: Bool, servers: Bool = false) {
+    public init(sharedProjectImages: Bool, servers: Bool = false, compactSidebar: Bool = false) {
         self.sharedProjectImages = sharedProjectImages
         self.servers = servers
+        self.compactSidebar = compactSidebar
     }
 
     /// Present in the environment only for UI-test runs; the same variable
@@ -23,6 +25,9 @@ public nonisolated struct FeatureFlags: Sendable, Equatable {
     /// When "1" alongside `uiTestEnvironmentVar`, forces `servers` off. It
     /// can never force a flag on.
     public static let uiTestForceServersOffVar = "BATTY_UI_TEST_FORCE_SERVERS_OFF"
+
+    /// When "1" alongside `uiTestEnvironmentVar`, forces `compactSidebar` off.
+    public static let uiTestForceCompactSidebarOffVar = "BATTY_UI_TEST_FORCE_COMPACT_SIDEBAR_OFF"
 
     /// A nil or unknown identifier fails closed.
     public static func resolved(
@@ -35,7 +40,7 @@ public nonisolated struct FeatureFlags: Sendable, Equatable {
         }
         let isBeta = variant == .beta
         return applyingUITestOverride(
-            FeatureFlags(sharedProjectImages: isBeta, servers: isBeta),
+            FeatureFlags(sharedProjectImages: isBeta, servers: isBeta, compactSidebar: isBeta),
             environment: environment
         )
     }
@@ -46,14 +51,14 @@ public nonisolated struct FeatureFlags: Sendable, Equatable {
     /// reads this; it uses `resolved(bundleIdentifier:)`.
     public static var current: FeatureFlags {
         let isBeta = ServiceNames.current == .beta
-        return FeatureFlags(sharedProjectImages: isBeta, servers: isBeta)
+        return FeatureFlags(sharedProjectImages: isBeta, servers: isBeta, compactSidebar: isBeta)
     }
 
     public static func applyingUITestOverride(_ flags: FeatureFlags, environment: [String: String]) -> FeatureFlags {
-        guard environment[uiTestEnvironmentVar] != nil,
-              environment[uiTestForceServersOffVar] == "1" else { return flags }
+        guard environment[uiTestEnvironmentVar] != nil else { return flags }
         var result = flags
-        result.servers = false
+        if environment[uiTestForceServersOffVar] == "1" { result.servers = false }
+        if environment[uiTestForceCompactSidebarOffVar] == "1" { result.compactSidebar = false }
         return result
     }
 }

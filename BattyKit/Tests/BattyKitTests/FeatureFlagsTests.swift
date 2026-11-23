@@ -42,4 +42,24 @@ struct FeatureFlagsTests {
         #expect(!FeatureFlags.resolved(bundleIdentifier: ServiceNames.Variant.prod.appBundleIdentifier, environment: [FeatureFlags.uiTestEnvironmentVar: "x", FeatureFlags.uiTestForceServersOffVar: "0"]).servers)
         #expect(FeatureFlags.resolved(bundleIdentifier: ServiceNames.Variant.beta.appBundleIdentifier, environment: [FeatureFlags.uiTestForceServersOffVar: "1"]).servers)
     }
+
+    @Test func compactSidebarIsOnInBetaAndOffInProd() {
+        #expect(FeatureFlags.resolved(bundleIdentifier: ServiceNames.Variant.beta.appBundleIdentifier, environment: [:]).compactSidebar)
+        #expect(!FeatureFlags.resolved(bundleIdentifier: ServiceNames.Variant.prod.appBundleIdentifier, environment: [:]).compactSidebar)
+    }
+
+    @Test func compactSidebarFailsClosedForUnknownBundle() {
+        #expect(!FeatureFlags.resolved(bundleIdentifier: "com.example.other", environment: [:]).compactSidebar)
+        #expect(!FeatureFlags.resolved(bundleIdentifier: nil, environment: [:]).compactSidebar)
+    }
+
+    @Test func uiTestOverrideForcesCompactSidebarOffButNeverOn() {
+        let beta = ServiceNames.Variant.beta.appBundleIdentifier
+        let forceOff = [FeatureFlags.uiTestEnvironmentVar: "x", FeatureFlags.uiTestForceCompactSidebarOffVar: "1"]
+        let flags = FeatureFlags.resolved(bundleIdentifier: beta, environment: forceOff)
+        #expect(!flags.compactSidebar)
+        #expect(flags.servers, "each override forces only its own flag off")
+        #expect(!FeatureFlags.resolved(bundleIdentifier: ServiceNames.Variant.prod.appBundleIdentifier, environment: forceOff).compactSidebar)
+        #expect(FeatureFlags.resolved(bundleIdentifier: beta, environment: [FeatureFlags.uiTestForceCompactSidebarOffVar: "1"]).compactSidebar)
+    }
 }

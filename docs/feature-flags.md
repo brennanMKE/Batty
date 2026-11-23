@@ -2,7 +2,7 @@
 
 Unfinished features land on `main` behind a flag until the release that ships them (`AGENTS.md`, "Release branches"). With the flag off a feature is invisible and inert: no menu, Command Palette, Sidebar or CLI entry points, and no reads or writes of the feature's files.
 
-Two flags exist today, listed under "Current flags". This page is also the recipe for the next one.
+The flags that exist today are listed under "Current flags". This page is also the recipe for the next one.
 
 ## Policy
 
@@ -34,6 +34,15 @@ Record each gate site (file, symbol, what the flag changes) as you add it, so re
   - `ServersToolbarItem` (`Views/ServersToolbarButton.swift`, through `ServersToolbarVisibility.isVisible(flagOn:activeCount:alwaysShow:)`): the toolbar button never shows with the flag off.
   - `SettingsView` (`GeneralSettingsView(showsServers:)`): the Settings › General › Servers section ("Always show Servers in the toolbar") is shown only with the flag on.
   - Flag-off tests: `AppStateStoreServerTests.everyVerbFailsWithFlagOff`, `ServersToolbarVisibilityTests.hiddenWithFlagOffEvenWithServersOrSetting`, `ServerCapabilitiesTests.serverVerbsAppearOnlyWithTheFlagOn`, `CapabilitiesCommandTests.flagOffPayloadHasNoServerVerbs`, `BattyUITests/CLIServersListTests/testServerVerbsAbsentWithFlagForcedOff`, `AppStateStoreStaticServerTests.serveFailsWithFlagOff`, `BattyUITests/CLIServerServeTests/testServeAbsentWithFlagForcedOff`. Delete them with the flag.
+
+- `compactSidebar` (#0679, experiment): the symbols-only Sidebar rail, its ⌥⌘B style command and the divider drag-to-snap. UI-test force-off override `BATTY_UI_TEST_FORCE_COMPACT_SIDEBAR_OFF=1` (with `BATTY_UI_TEST_SCRIPT` set). `FeatureFlags.current` sets it only because the initializer needs every flag; the CLI never reads it. Remove it with the experiment's go / no-go. Gate sites:
+  - `RootWindowView` (`BattyKit/Sources/BattyKit/Views/RootWindowView.swift`): the column range comes from `SidebarRailMetrics.columnRange(compactSidebar:style:railWidth:)` (flag off: 180/220/320, today's, in either style; flag on: the same in names, the rail width as minimum only in symbols), the `SidebarSplitBridge` background is mounted only with the flag on, and the `co.sstools.Batty.sidebarRailWidth` default is read only with the flag on.
+  - `ShortcutAction.isAvailable(_:)`: false for `.toggleSidebarStyle` with the flag off. It filters `BattyShortcuts.handle` (no key binding), `CommandPaletteView.allCommands` (no palette entry) and `ShortcutsSettingsView(flags:)` (no Settings row).
+  - `BattyCommands` (`CommandGroup(after: .sidebar)`): the "Show Symbols Only" / "Show Session Names" item exists only with the flag on.
+  - `BattyKit/Sources/BattyKit/Help/05-shortcuts.md` does not list ⌥⌘B, because Help ships in Prod; `ShortcutDocsSyncTests` checks Help against the actions available with every flag off. Add the row when removing the flag.
+  - `ShortcutsStore.collisions(_:excluding:flags:)` skips unavailable actions, so with the flag off ⌥⌘B is not reported as "Used by Toggle Symbols-Only Sidebar". `ShortcutsStore.save()` still writes a `toggleSidebarStyle` entry into the shortcuts blob in Prod; it is a forward-compatible key that `loadFromDefaults` tolerates, and it reserves nothing.
+  - `WindowRuntime.sidebarStyle` and the outline's rail mode need no gate: only the bridge writes the style, so it stays `.names`.
+  - Flag-off tests: `FeatureFlagsTests.compactSidebarIsOnInBetaAndOffInProd`, `FeatureFlagsTests.uiTestOverrideForcesCompactSidebarOffButNeverOn`, `ShortcutsStoreTests.sidebarStyleActionIsUnavailableWithFlagOff`, `ShortcutsStoreTests.hiddenSidebarStyleActionReportsNoCollisionWithFlagOff`, `SidebarStyleTests.columnRangeIsUnchangedWithFlagOff`, `CommandPaletteViewActionTests.sidebarStyleCommandListedOnlyWithFlagOn`, `BattyUITests/SidebarRailTests/testStyleCommandAbsentWithFlagForcedOff`. Delete them with the flag.
 
 ## Retired flags
 

@@ -81,6 +81,29 @@ public struct SessionSidebarView: View {
         return String(describing: color)
     }
 
+    @ViewBuilder
+    private var footerButtons: some View {
+        Button {
+            windowRuntime.addSession()
+        } label: {
+            Image(systemName: "plus")
+                .frame(width: 22, height: 22)
+        }
+        .buttonStyle(.borderless)
+        .help("New Session")
+        .accessibilityIdentifier(SidebarFooter.addSessionIdentifier)
+        Button {
+            store.presentProjectPicker(in: windowRuntime)
+        } label: {
+            Image(systemName: SidebarFooter.openProjectSystemName)
+                .frame(width: 22, height: 22)
+        }
+        .buttonStyle(.borderless)
+        .help(SidebarFooter.openProjectHelp)
+        .accessibilityLabel(SidebarFooter.openProjectLabel)
+        .accessibilityIdentifier(SidebarFooter.openProjectIdentifier)
+    }
+
     public var body: some View {
         SessionSidebarOutline(
             windowRuntime: windowRuntime,
@@ -107,29 +130,24 @@ public struct SessionSidebarView: View {
         .background(sidebarFill ?? Color.clear)
         .navigationTitle(Text(verbatim: "Batty"))
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            HStack {
-                Button {
-                    windowRuntime.addSession()
-                } label: {
-                    Image(systemName: "plus")
-                        .frame(width: 22, height: 22)
+            Group {
+                if windowRuntime.sidebarStyle == .symbols {
+                    VStack(spacing: 4) {
+                        footerButtons
+                    }
+                    .frame(maxWidth: .infinity)
+                } else {
+                    HStack {
+                        footerButtons
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12)
                 }
-                .buttonStyle(.borderless)
-                .help("New Session")
-                .accessibilityIdentifier(SidebarFooter.addSessionIdentifier)
-                Button {
-                    store.presentProjectPicker(in: windowRuntime)
-                } label: {
-                    Image(systemName: SidebarFooter.openProjectSystemName)
-                        .frame(width: 22, height: 22)
-                }
-                .buttonStyle(.borderless)
-                .help(SidebarFooter.openProjectHelp)
-                .accessibilityLabel(SidebarFooter.openProjectLabel)
-                .accessibilityIdentifier(SidebarFooter.openProjectIdentifier)
-                Spacer()
             }
-            .padding(.horizontal, 12)
+            // The names footer's fixed buttons would otherwise hold the
+            // column at ~84 pt, so the style command's `setPosition` to the
+            // rail (made before SwiftUI restacks the footer) is clamped.
+            .modifier(CompressibleSidebarFooter(enabled: store.featureFlags.compactSidebar))
             .padding(.vertical, 6)
             .background {
                 if let bg = sidebarFill {
@@ -288,6 +306,40 @@ extension SessionSidebarView {
         )
     }
 
+    /// The rail's Session cell: the symbol alone, badges on its corners.
+    static func railCell(
+        session: SessionRuntime,
+        store: AppStateStore,
+        windowRuntime: WindowRuntime,
+        accent: Color?,
+        actions: @escaping () -> SidebarRowActions
+    ) -> AnyView {
+        AnyView(
+            SessionRailRow(
+                session: session,
+                store: store,
+                windowRuntime: windowRuntime,
+                accent: accent,
+                onRename: { actions().onRename(session) },
+                onTheme: { actions().onTheme(session.id) },
+                onSetColor: { actions().onSetColor(session.id) },
+                onBackground: { actions().onBackground(session.id) }
+            )
+            .environment(\.appStateStore, store)
+        )
+    }
+
+    static func reminderState(for session: SessionRuntime, store: AppStateStore) -> String? {
+        if let reminder = session.reminder {
+            let detail = ReminderActions.detail(for: reminder, store: store)
+            return detail.map { "reminder pending: \($0)" } ?? "reminder pending"
+        }
+        if store.firedReminders.unseenSessionIDs.contains(session.id) {
+            return "reminder due"
+        }
+        return nil
+    }
+
     static func paneCell(
         pane: PaneRuntime,
         session: SessionRuntime,
@@ -336,14 +388,7 @@ private struct SessionSidebarRow: View {
     /// the row's value instead: "reminder pending: <time and note>" or
     /// "reminder due".
     private var reminderState: String? {
-        if let reminder = session.reminder {
-            let detail = ReminderActions.detail(for: reminder, store: store)
-            return detail.map { "reminder pending: \($0)" } ?? "reminder pending"
-        }
-        if store.firedReminders.unseenSessionIDs.contains(session.id) {
-            return "reminder due"
-        }
-        return nil
+        SessionSidebarView.reminderState(for: session, store: store)
     }
 
     var body: some View {
@@ -383,6 +428,101 @@ private struct SessionSidebarRow: View {
         .accessibilityAddTraits(.isStaticText)
         .accessibilityIdentifier("session-row.\(session.title)")
         .accessibilityValue(SessionSidebarView.rowAccessibilityValue(for: session, isSelected: session.isSelected, projectSymbol: SessionSidebarView.rowProjectSymbol(projectID: session.projectID, symbol: session.projectSymbol), iconName: SessionSidebarView.rowIconName(for: session), projectSymbolName: session.projectSymbolName, reminder: reminderState, tint: SessionSidebarView.rowTint(for: session)))
+    }
+}
+
+/// With `compactSidebar` on, the footer may be narrower than its content
+/// (clipped) so it never holds the column above the rail width.
+private struct CompressibleSidebarFooter: ViewModifier {
+    let enabled: Bool
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content
+                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                .clipped()
+        } else {
+            content
+        }
+    }
+}
+
+/// One Session in the symbols-only rail. Same accessibility element,
+/// identifier, value and context menu as `SessionSidebarRow`, so VoiceOver
+/// and UI-test lookups don't change with the style.
+private struct SessionRailRow: View {
+    let session: SessionRuntime
+    let store: AppStateStore
+    let windowRuntime: WindowRuntime
+    let accent: Color?
+    let onRename: () -> Void
+    let onTheme: () -> Void
+    let onSetColor: () -> Void
+    let onBackground: () -> Void
+
+    private var cornerGlyph: SessionRailBadge.Glyph? {
+        SessionRailBadge.cornerGlyph(
+            reminderDue: store.firedReminders.unseenSessionIDs.contains(session.id),
+            imageProblem: session.projectBackgroundImageProblem != nil,
+            reminderPending: session.reminder != nil
+        )
+    }
+
+    private func glyphColor(_ glyph: SessionRailBadge.Glyph) -> Color {
+        switch glyph {
+        case .reminderDue: accent ?? Color.accentColor
+        case .imageProblem: .orange
+        case .reminderPending: .secondary
+        }
+    }
+
+    var body: some View {
+        SessionRowIconView(
+            isProjectBacked: session.projectID != nil,
+            projectSymbol: session.projectSymbol,
+            projectSymbolName: session.projectSymbolName,
+            color: session.sessionColor
+        )
+        .imageScale(.large)
+        .frame(width: 28, height: 28)
+        .overlay(alignment: .topTrailing) {
+            if let count = SessionRailBadge.countText(session.unseenBellCount) {
+                Text(verbatim: count)
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(Color.white)
+                    .padding(.horizontal, 3)
+                    .frame(minWidth: 14, minHeight: 14)
+                    .background(Capsule().fill(accent ?? Color.accentColor))
+                    .offset(x: 6, y: -5)
+            }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if let glyph = cornerGlyph {
+                Image(systemName: glyph.systemName)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(glyphColor(glyph))
+                    .offset(x: 6, y: 4)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .help(session.title)
+        .contextMenu {
+            SessionRowMenu(
+                session: session,
+                store: store,
+                windowRuntime: windowRuntime,
+                onRename: onRename,
+                onTheme: onTheme,
+                onSetColor: onSetColor,
+                onBackground: onBackground
+            )
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(SessionSidebarView.rowAccessibilityLabel(for: session))
+        .accessibilityAddTraits(.isStaticText)
+        .accessibilityIdentifier("session-row.\(session.title)")
+        .accessibilityValue(SessionSidebarView.rowAccessibilityValue(for: session, isSelected: session.isSelected, projectSymbol: SessionSidebarView.rowProjectSymbol(projectID: session.projectID, symbol: session.projectSymbol), iconName: SessionSidebarView.rowIconName(for: session), projectSymbolName: session.projectSymbolName, reminder: SessionSidebarView.reminderState(for: session, store: store), tint: SessionSidebarView.rowTint(for: session)))
     }
 }
 

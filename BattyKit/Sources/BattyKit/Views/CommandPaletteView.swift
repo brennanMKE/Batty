@@ -68,7 +68,7 @@ struct CommandPaletteView: View {
         let shortcuts = ShortcutsStore.shared
         var cmds: [PaletteCommand] = []
 
-        for action in ShortcutAction.allCases where action != .commandPalette {
+        for action in ShortcutAction.allCases where action != .commandPalette && action.isAvailable(store.featureFlags) {
             let hint = shortcuts.binding(for: action).displayString
             if action == .remindMe {
                 guard let window = store.keyWindowOrFirstRegistered(), let session = window.selectedSession else { continue }
@@ -85,9 +85,12 @@ struct CommandPaletteView: View {
                 ))
                 continue
             }
+            let title = action == .toggleSidebarStyle
+                ? SidebarStyle.toggleCommandTitle(current: store.keyWindowOrFirstRegistered()?.sidebarStyle ?? .names)
+                : action.displayName
             cmds.append(PaletteCommand(
                 id: "action:\(action.rawValue)",
-                title: action.displayName,
+                title: title,
                 keyHint: hint.isEmpty ? nil : hint,
                 action: { self.dispatch(action) }
             ))
@@ -451,6 +454,8 @@ struct CommandPaletteView: View {
             ReminderActions.openBar(in: window)
         case .toggleReminders:
             NotificationCenter.default.post(name: .battyToggleReminders, object: nil)
+        case .toggleSidebarStyle:
+            NotificationCenter.default.post(name: .battyToggleSidebarStyle, object: nil)
         }
     }
 }

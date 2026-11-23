@@ -134,6 +134,11 @@ public final class WindowRuntime {
     /// present, the Sidebar footer button); cleared by the picker's
     /// onAction/onCancel and the sheet binding's setter.
     public var projectPickerShown: Bool = false
+    /// Whether this window's Session Sidebar shows names or the symbols-only
+    /// rail (`compactSidebar` experiment). Written only by
+    /// `SidebarSplitBridgeView`, from the style command and the end of a
+    /// divider drag; the outline, footer and menu title read it. Not persisted.
+    public internal(set) var sidebarStyle: SidebarStyle = .names
     /// The Session whose Quick Reminder bar is up in this window. Written by
     /// the event-origin entry points (`ReminderActions.openBar`: ⇧⌘R, the
     /// Session menu, the Sidebar context menu, the

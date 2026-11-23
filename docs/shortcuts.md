@@ -82,6 +82,7 @@ generated directly from `ShortcutAction.defaultBinding`:
 | Toggle Sidebar | `Cmd-B` | Posts `.battyToggleSidebar`; toggles the key window's sidebar (per-window `@SceneStorage` in `RootWindowView`) |
 | Toggle Bell Feed | `Cmd-Shift-B` | Posts `.battyToggleBellFeed` notification |
 | Show Reminders | `Cmd-Option-R` | Posts `.battyToggleReminders` notification |
+| Toggle Symbols-Only Sidebar | `Cmd-Option-B` | Posts `.battyToggleSidebarStyle` notification. Beta only (`compactSidebar` flag, #0679) |
 
 ---
 
@@ -133,6 +134,7 @@ stays checkable against source at a glance.
 | `resizeSplitDown` | Move Split Divider Down | `Cmd-Ctrl-↓` | `tree.resizeFocusedSplit(.down)` |
 | `remindMe` | Remind Me… | `Cmd-Shift-R` | `ReminderActions.openBar(in:)` — opens the Quick Reminder bar for the selected Session (#0631) |
 | `toggleReminders` | Show Reminders | `Cmd-Option-R` | posts `.battyToggleReminders`; the key Window, or the Window whose popover is open, toggles its Reminders popover (#0640) |
+| `toggleSidebarStyle` | Toggle Symbols-Only Sidebar | `Cmd-Option-B` | posts `.battyToggleSidebarStyle`; the key Window's `SidebarSplitBridgeView` switches its Sidebar between names and the symbols-only rail. It never shows or hides the Sidebar: while hidden it changes the style only, and the next `Cmd-B` shows that style. Unavailable (no binding, menu item, palette entry or Settings row) unless `FeatureFlags.compactSidebar` (#0679) |
 
 The recorder accepts:
 
@@ -462,8 +464,8 @@ does not modify the binding.
 
 `ShortcutRow` surfaces two kinds of warning rows beneath the recorder:
 
-- **Collision warning** — `store.collisions(_:excluding:)` finds other
-  actions sharing the same binding. The first one is named in
+- **Collision warning** — `store.collisions(_:excluding:flags:)` finds other
+  actions sharing the same binding, skipping actions the feature flags hide. The first one is named in
   `"Used by <other action>"`. Collisions still save — the user picks the
   winner by next-touch.
 - **Reserved warning** — `ShortcutsStore.isReserved(_:)` matches against

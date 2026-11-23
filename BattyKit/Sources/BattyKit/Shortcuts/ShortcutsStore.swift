@@ -69,10 +69,11 @@ public final class ShortcutsStore {
     // MARK: - Validation
 
     /// Other actions that share the same binding. Used by the recorder UI to
-    /// surface a "Used by …" warning row.
-    public func collisions(_ binding: ShortcutBinding, excluding: ShortcutAction?) -> [ShortcutAction] {
+    /// surface a "Used by …" warning row. An action that `flags` hide
+    /// reserves no key, so it is never reported.
+    public func collisions(_ binding: ShortcutBinding, excluding: ShortcutAction?, flags: FeatureFlags) -> [ShortcutAction] {
         bindings.compactMap { (action, existing) in
-            guard action != excluding else { return nil }
+            guard action != excluding, action.isAvailable(flags) else { return nil }
             return existing == binding ? action : nil
         }
     }

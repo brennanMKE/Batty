@@ -166,6 +166,13 @@ struct ShortcutDocsSyncTests {
         uniqueKeysWithValues: ShortcutAction.allCases.map { ($0.displayName, $0) }
     )
 
+    /// Help ships in Prod, so it lists only the actions available there; a
+    /// flagged action (`ShortcutAction.isAvailable`) joins Help when its flag
+    /// is removed. `docs/shortcuts.md` lists every action.
+    private static let prodActions = ShortcutAction.allCases.filter {
+        $0.isAvailable(FeatureFlags(sharedProjectImages: false))
+    }
+
     private static func helpCatalogRows() throws -> [[String]] {
         let text = try String(contentsOf: helpCatalogURL(), encoding: .utf8)
         return parseTables(in: text, headerColumns: ["Action", "Default"])
@@ -176,7 +183,7 @@ struct ShortcutDocsSyncTests {
         // heading, restructured table) and every other test in this file
         // passing vacuously as a result.
         let rows = try Self.helpCatalogRows()
-        #expect(rows.count >= ShortcutAction.allCases.count)
+        #expect(rows.count >= Self.prodActions.count)
     }
 
     @Test func helpCatalogChordsMatchDefaultBindings() throws {
@@ -210,7 +217,7 @@ struct ShortcutDocsSyncTests {
         let rows = try Self.helpCatalogRows()
         #expect(!rows.isEmpty)
         let namedInCatalog = Set(rows.map { $0.first ?? "" })
-        let missing = ShortcutAction.allCases.filter { !namedInCatalog.contains($0.displayName) }
+        let missing = Self.prodActions.filter { !namedInCatalog.contains($0.displayName) }
         #expect(missing.isEmpty, "05-shortcuts.md is missing: \(missing.map(\.rawValue).sorted())")
     }
 

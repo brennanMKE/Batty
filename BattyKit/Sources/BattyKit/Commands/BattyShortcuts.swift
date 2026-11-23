@@ -38,7 +38,8 @@ public enum BattyShortcuts {
 
         if let candidate = makeCandidate(from: event, mods: mods) {
             let shortcuts = ShortcutsStore.shared
-            for action in ShortcutAction.allCases where shortcuts.binding(for: action) == candidate {
+            for action in ShortcutAction.allCases
+            where action.isAvailable(appStore.featureFlags) && shortcuts.binding(for: action) == candidate {
                 run(action, appStore: appStore)
                 return true
             }
@@ -209,6 +210,8 @@ public enum BattyShortcuts {
             }
         case .toggleReminders:
             NotificationCenter.default.post(name: .battyToggleReminders, object: nil)
+        case .toggleSidebarStyle:
+            NotificationCenter.default.post(name: .battyToggleSidebarStyle, object: nil)
         case .newWindow:
             // Already handled above; unreachable.
             break

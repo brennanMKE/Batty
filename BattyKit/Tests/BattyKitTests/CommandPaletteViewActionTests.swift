@@ -195,4 +195,29 @@ struct CommandPaletteViewActionTests {
 
         #expect(store.bellFeed.entries.map(\.message) == ["unread"])
     }
+
+    private func paletteStore(compactSidebar: Bool) -> AppStateStore {
+        AppStateStore(
+            preferences: UserDefaults(suiteName: "CommandPaletteViewActionTests-\(UUID().uuidString)")!,
+            featureFlags: FeatureFlags(sharedProjectImages: false, compactSidebar: compactSidebar)
+        )
+    }
+
+    @Test func sidebarStyleCommandListedOnlyWithFlagOn() {
+        let id = "action:\(ShortcutAction.toggleSidebarStyle.rawValue)"
+        let off = CommandPaletteView(isPresented: .constant(true), store: paletteStore(compactSidebar: false))
+        #expect(!off.allCommands.contains { $0.id == id })
+        let on = CommandPaletteView(isPresented: .constant(true), store: paletteStore(compactSidebar: true))
+        #expect(on.allCommands.contains { $0.id == id })
+    }
+
+    @Test func sidebarStyleCommandTitleFollowsTheKeyWindowStyle() throws {
+        let store = paletteStore(compactSidebar: true)
+        let window = try #require(store.keyWindowOrFirstRegistered())
+        let id = "action:\(ShortcutAction.toggleSidebarStyle.rawValue)"
+        let view = CommandPaletteView(isPresented: .constant(true), store: store)
+        #expect(view.allCommands.first { $0.id == id }?.title == "Show Symbols Only")
+        window.sidebarStyle = .symbols
+        #expect(view.allCommands.first { $0.id == id }?.title == "Show Session Names")
+    }
 }

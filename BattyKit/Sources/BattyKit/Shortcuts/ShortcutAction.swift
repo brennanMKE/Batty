@@ -1,5 +1,6 @@
 // ShortcutAction.swift
 
+import BattyXPCCore
 import SwiftUI
 
 /// The catalog of user-configurable keyboard shortcuts in Batty. Cmd-C and
@@ -55,6 +56,7 @@ public enum ShortcutAction: String, CaseIterable, Hashable, Identifiable, Sendab
     case resizeSplitDown
     case remindMe
     case toggleReminders
+    case toggleSidebarStyle
 
     public var id: String { rawValue }
 
@@ -95,6 +97,7 @@ public enum ShortcutAction: String, CaseIterable, Hashable, Identifiable, Sendab
         case .resizeSplitDown:  return String(localized: "Move Split Divider Down")
         case .remindMe:         return String(localized: "Remind Me…")
         case .toggleReminders:  return String(localized: "Show Reminders")
+        case .toggleSidebarStyle: return String(localized: "Toggle Symbols-Only Sidebar")
         }
     }
 
@@ -186,6 +189,17 @@ public enum ShortcutAction: String, CaseIterable, Hashable, Identifiable, Sendab
             return ShortcutBinding(key: "r", modifiers: EventModifiers([.command, .shift]).rawValue)
         case .toggleReminders:
             return ShortcutBinding(key: "r", modifiers: EventModifiers([.command, .option]).rawValue)
+        case .toggleSidebarStyle:
+            return ShortcutBinding(key: "b", modifiers: EventModifiers([.command, .option]).rawValue)
+        }
+    }
+
+    /// False for an action whose feature flag is off: it gets no key
+    /// binding, menu item, palette entry or Settings row.
+    public func isAvailable(_ flags: FeatureFlags) -> Bool {
+        switch self {
+        case .toggleSidebarStyle: flags.compactSidebar
+        default: true
         }
     }
 }

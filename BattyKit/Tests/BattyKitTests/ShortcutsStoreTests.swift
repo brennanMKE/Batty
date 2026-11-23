@@ -37,7 +37,7 @@ struct ShortcutsStoreTests {
         #expect(ShortcutAction.toggleReminders.defaultBinding
             == ShortcutBinding(key: "r", modifiers: EventModifiers([.command, .option]).rawValue))
         #expect(ShortcutAction.toggleReminders.displayName == "Show Reminders")
-        #expect(ShortcutAction.allCases.last == .toggleReminders, "the catalog is append-only")
+        #expect(ShortcutAction.allCases.last == .toggleSidebarStyle, "the catalog is append-only")
     }
 
     @Test func toggleRemindersDefaultCollidesWithNoOtherDefault() {
@@ -46,6 +46,30 @@ struct ShortcutsStoreTests {
             #expect(action.defaultBinding != binding, "\(action.rawValue)")
         }
         #expect(!ShortcutsStore.reservedShortcuts.contains(binding))
+    }
+
+    @Test func toggleSidebarStyleDefaultsToOptionCommandB() {
+        #expect(ShortcutAction.toggleSidebarStyle.defaultBinding
+            == ShortcutBinding(key: "b", modifiers: EventModifiers([.command, .option]).rawValue))
+        #expect(ShortcutAction.toggleSidebarStyle.displayName == "Toggle Symbols-Only Sidebar")
+    }
+
+    @Test func toggleSidebarStyleDefaultCollidesWithNoOtherDefault() {
+        let binding = ShortcutAction.toggleSidebarStyle.defaultBinding
+        for action in ShortcutAction.allCases where action != .toggleSidebarStyle {
+            #expect(action.defaultBinding != binding, "\(action.rawValue)")
+        }
+        #expect(!ShortcutsStore.reservedShortcuts.contains(binding))
+    }
+
+    @Test func sidebarStyleActionIsUnavailableWithFlagOff() {
+        let off = FeatureFlags(sharedProjectImages: false, compactSidebar: false)
+        let on = FeatureFlags(sharedProjectImages: false, compactSidebar: true)
+        #expect(!ShortcutAction.toggleSidebarStyle.isAvailable(off))
+        #expect(ShortcutAction.toggleSidebarStyle.isAvailable(on))
+        for action in ShortcutAction.allCases where action != .toggleSidebarStyle {
+            #expect(action.isAvailable(off), "\(action.rawValue)")
+        }
     }
 
     @Test func bindingRoundTripsThroughUserDefaults() {
@@ -65,9 +89,19 @@ struct ShortcutsStoreTests {
         store.setBinding(combo, for: .newTab)
         store.setBinding(combo, for: .closeTab)
 
-        let hits = store.collisions(combo, excluding: .newTab)
+        let hits = store.collisions(combo, excluding: .newTab, flags: FeatureFlags(sharedProjectImages: false, compactSidebar: true))
         #expect(hits.contains(.closeTab))
         #expect(!hits.contains(.newTab))
+    }
+
+    @Test func hiddenSidebarStyleActionReportsNoCollisionWithFlagOff() {
+        let store = ShortcutsStore(userDefaults: makeDefaults())
+        let optionCmdB = ShortcutAction.toggleSidebarStyle.defaultBinding
+        store.setBinding(optionCmdB, for: .newTab)
+        let off = FeatureFlags(sharedProjectImages: false, compactSidebar: false)
+        let on = FeatureFlags(sharedProjectImages: false, compactSidebar: true)
+        #expect(store.collisions(optionCmdB, excluding: .newTab, flags: off).isEmpty)
+        #expect(store.collisions(optionCmdB, excluding: .newTab, flags: on) == [.toggleSidebarStyle])
     }
 
     @Test func isReservedFlagsCmdQ() {

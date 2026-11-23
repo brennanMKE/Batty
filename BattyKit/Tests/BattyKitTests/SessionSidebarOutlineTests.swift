@@ -298,4 +298,121 @@ struct SessionSidebarOutlineTests {
         #expect(paneRow.fill != nil)
         #expect(paneRow.tint == nil)
     }
+
+    // MARK: - Symbols-only rail (#0679)
+
+    private func cellIdentifiers(_ outline: NSOutlineView) -> [String] {
+        (0..<outline.numberOfRows).compactMap {
+            outline.view(atColumn: 0, row: $0, makeIfNecessary: false)?.identifier?.rawValue
+        }
+    }
+
+    @Test func railStyleReportsNoChildrenAndKeepsExpandedState() async throws {
+        let fixture = SessionDetailFixture.standard()
+        defer { fixture.tearDown() }
+        let windowRuntime = fixture.windowRuntime
+        let expanded = windowRuntime.sessions[2]
+        expanded.isPaneListExpanded = true
+        let outline = try #require(await settled(fixture))
+        let paneRow = try #require(expanded.tree.panesSortedByColumnThenRow.first)
+        #expect(outline.row(forItem: paneRow) >= 0)
+
+        windowRuntime.sidebarStyle = .symbols
+        _ = await fixture.probe.settle()
+        #expect(outline.numberOfRows == windowRuntime.sessions.count, "Pane rows are hidden in the rail")
+        #expect(outline.numberOfChildren(ofItem: expanded) == 0)
+        #expect(!outline.isExpandable(expanded))
+        #expect(expanded.isPaneListExpanded, "the rail must not write the expanded state")
+
+        windowRuntime.sidebarStyle = .names
+        _ = await fixture.probe.settle()
+        #expect(expanded.isPaneListExpanded)
+        #expect(outline.isItemExpanded(expanded))
+        #expect(outline.row(forItem: paneRow) >= 0, "Pane rows return with names")
+    }
+
+    @Test func railStyleUsesRailCellsAndFlushOutline() async throws {
+        let fixture = SessionDetailFixture.standard()
+        defer { fixture.tearDown() }
+        let outline = try #require(await settled(fixture))
+        #expect(outline.style == .sourceList)
+
+        fixture.windowRuntime.sidebarStyle = .symbols
+        _ = await fixture.probe.settle()
+        #expect(outline.style == .plain)
+        #expect(outline.indentationPerLevel == 0)
+        #expect(outline.rowHeight == SessionSidebarCoordinator.railRowHeight)
+        let identifiers = cellIdentifiers(outline)
+        #expect(!identifiers.isEmpty)
+        #expect(identifiers.allSatisfy { $0 == SessionSidebarCoordinator.railCellID.rawValue }, "\(identifiers)")
+        let rowView = try #require(outline.rowView(atRow: 0, makeIfNecessary: false) as? SidebarOutlineRowView)
+        #expect(rowView.isRail)
+        let railCell = try #require(outline.view(atColumn: 0, row: 0, makeIfNecessary: false))
+        #expect(railCell.frame.minX < 4, "the rail cell reserves disclosure space: \(railCell.frame)")
+        #expect(abs(railCell.frame.midX - rowView.bounds.midX) < 4, "the rail cell is not centred: \(railCell.frame) in \(rowView.bounds)")
+        #expect(rowView.interiorBackgroundStyle == .normal)
+
+        fixture.windowRuntime.sidebarStyle = .names
+        _ = await fixture.probe.settle()
+        #expect(outline.style == .sourceList)
+        #expect(outline.indentationPerLevel == 12)
+        #expect(outline.rowSizeStyle == .medium)
+        #expect(outline.rowHeight == 32)
+        #expect(cellIdentifiers(outline).allSatisfy { $0 != SessionSidebarCoordinator.railCellID.rawValue })
+    }
+
+    @Test func railStyleArrowKeysStillSelectSessions() async throws {
+        let fixture = SessionDetailFixture.standard()
+        defer { fixture.tearDown() }
+        let windowRuntime = fixture.windowRuntime
+        windowRuntime.sidebarStyle = .symbols
+        let outline = try #require(await settled(fixture))
+        _ = fixture.probe.window.makeFirstResponder(outline)
+
+        let down = String(Character(UnicodeScalar(NSDownArrowFunctionKey)!))
+        for expected in 1...3 {
+            try key(down, keyCode: 125, to: outline, in: fixture.probe.window)
+            _ = await fixture.probe.settle()
+            #expect(selectedIndex(windowRuntime) == expected)
+        }
+    }
+
+    @Test func railStyleDropStillMovesSessions() async throws {
+        let fixture = SessionDetailFixture.standard()
+        defer { fixture.tearDown() }
+        fixture.windowRuntime.sidebarStyle = .symbols
+        let outline = try #require(await settled(fixture))
+        let coordinator = try coordinator(of: outline)
+        let titles = fixture.windowRuntime.sessions.map(\.title)
+        coordinator.moveSession(from: 0, toRootIndex: 3)
+        _ = await fixture.probe.settle()
+        #expect(fixture.windowRuntime.sessions.map(\.title) == [titles[1], titles[2], titles[0], titles[3]])
+        let shown = (0..<outline.numberOfChildren(ofItem: nil)).map { (outline.child($0, ofItem: nil) as? SessionRuntime)?.title }
+        #expect(shown == fixture.windowRuntime.sessions.map(\.title))
+    }
+
+    @Test(.disabled("A headless NSHostingView cell exposes no SwiftUI accessibility children; BattyUITests/SidebarRailTests reads session-row.<title> in the rail"))
+    func railRowsKeepTheirAccessibilityIdentifierAndValue() async throws {
+        let fixture = SessionDetailFixture.standard()
+        defer { fixture.tearDown() }
+        fixture.windowRuntime.sidebarStyle = .symbols
+        let outline = try #require(await settled(fixture))
+        let session = fixture.windowRuntime.sessions[0]
+        let cell = try #require(outline.view(atColumn: 0, row: outline.row(forItem: session), makeIfNecessary: false))
+
+        func ax(_ object: NSObject, _ key: String) -> Any? {
+            object.responds(to: NSSelectorFromString(key)) ? object.value(forKey: key) : nil
+        }
+        func find(_ element: Any, depth: Int = 0) -> NSObject? {
+            guard depth < 12, let object = element as? NSObject else { return nil }
+            if ax(object, "accessibilityIdentifier") as? String == "session-row.\(session.title)" { return object }
+            for child in ax(object, "accessibilityChildren") as? [Any] ?? [] {
+                if let hit = find(child, depth: depth + 1) { return hit }
+            }
+            return nil
+        }
+        let element = try #require(find(cell))
+        let value = ax(element, "accessibilityValue") as? String
+        #expect(value?.hasPrefix("selected") == true, "\(value ?? "nil")")
+    }
 }

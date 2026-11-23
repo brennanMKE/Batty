@@ -7,10 +7,11 @@ import SwiftUI
 struct ShortcutRow: View {
     let action: ShortcutAction
     let store: ShortcutsStore
+    let flags: FeatureFlags
 
     var body: some View {
         let current = store.binding(for: action)
-        let collisions = store.collisions(current, excluding: action)
+        let collisions = store.collisions(current, excluding: action, flags: flags)
         let reserved = ShortcutsStore.isReserved(current)
 
         VStack(alignment: .leading, spacing: 4) {

@@ -205,6 +205,17 @@ public struct BattyCommands: Commands {
                 )
             }
             .keyboardShortcut(shortcuts.keyboardShortcut(for: .toggleSidebar))
+            if store.featureFlags.compactSidebar {
+                Button {
+                    postToContentWindow(.battyToggleSidebarStyle)
+                } label: {
+                    Label(
+                        SidebarStyle.toggleCommandTitle(current: keyWindow?.sidebarStyle ?? .names),
+                        systemImage: "sidebar.squares.left"
+                    )
+                }
+                .keyboardShortcut(shortcuts.keyboardShortcut(for: .toggleSidebarStyle))
+            }
         }
 
         CommandMenu("Session") {

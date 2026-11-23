@@ -614,6 +614,25 @@ specified and tested — `[0065]` called this out as bug-prone.
 - `Cmd-B` must appear in Settings → Shortcuts as the binding for
   `toggleSidebar`. The shortcut is customizable.
 
+**Sidebar style (experiment, `compactSidebar`, #0679).** Beta only; with the
+flag off none of this exists and the column range stays 180…320.
+
+- `Opt-Cmd-B` (View menu "Show Symbols Only" / "Show Session Names", Command
+  Palette, Settings → Shortcuts) switches the key window's Sidebar between
+  names and a symbols-only rail (56 pt, or 84 pt with the Beta default
+  `co.sstools.Batty.sidebarRailWidth = 84`). Back to names restores the prior
+  names width.
+- `Cmd-B` hides and shows the Sidebar in the style last showing, at that
+  style's width.
+- The style command never shows or hides the Sidebar. While it is hidden,
+  `Opt-Cmd-B` switches the style only, and the next `Cmd-B` shows it in that
+  style. The menu title follows the style.
+- The footer stays visible in the rail, its two buttons stacked.
+- Releasing a divider drag below 120 pt snaps to the rail; 120 to 180 pt snaps
+  to 180; wider keeps the width. The same thresholds apply dragging the rail
+  edge outward.
+- The style is per window and not persisted.
+
 **Regression patterns:**
 
 - `[0065]` — The sidebar toggle had no animation, the `+` button disappeared

@@ -8,6 +8,9 @@ nonisolated private let logger = Logger(subsystem: Logging.subsystem, category: 
 
 extension Notification.Name {
     public static let battyToggleSidebar = Notification.Name("co.sstools.Batty.toggleSidebar")
+    /// Names ↔ symbols-only rail in the key window (`compactSidebar`).
+    /// Observed by `SidebarSplitBridgeView`.
+    public static let battyToggleSidebarStyle = Notification.Name("co.sstools.Batty.toggleSidebarStyle")
 }
 
 public struct RootWindowView: View {
@@ -30,6 +33,9 @@ public struct RootWindowView: View {
     /// `@SceneStorage`, seed the per-window value from the legacy global key
     /// so existing single-window users keep their hidden/shown state.
     @AppStorage(SidebarPreference.migratedKey) private var sidebarMigrationDone: Bool = false
+    /// The rail's width, read once per window and only with
+    /// `compactSidebar` on, so Prod reads no default.
+    @State private var railWidth: CGFloat
 
     /// `store` is required, not a `.shared`-defaulting optional (#0359's "no
     /// silent default" rule, already applied to `WindowIDRegistrar` in
@@ -39,6 +45,9 @@ public struct RootWindowView: View {
     public init(windowID: WindowID, store: AppStateStore) {
         self.windowID = windowID
         _windowRuntime = State(initialValue: store.runtimeForPresentedWindow(windowID))
+        _railWidth = State(initialValue: store.featureFlags.compactSidebar
+            ? SidebarRailMetrics.railWidth(defaults: .standard)
+            : SidebarRailMetrics.defaultRail)
         _store = State(initialValue: store)
     }
 
@@ -53,11 +62,21 @@ public struct RootWindowView: View {
         WindowChromeScope(store: store, windowRuntime: windowRuntime) {
             WindowSeeThroughScope(store: store, windowRuntime: windowRuntime) {
                 NavigationSplitView(columnVisibility: $columnVisibility) {
+                    let range = SidebarRailMetrics.columnRange(
+                        compactSidebar: store.featureFlags.compactSidebar,
+                        style: windowRuntime.sidebarStyle,
+                        railWidth: railWidth
+                    )
                     SessionSidebarView(store: store, windowRuntime: windowRuntime)
-                        .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
+                        .navigationSplitViewColumnWidth(min: range.min, ideal: range.ideal, max: range.max)
                 } detail: {
                     SessionDetailView(store: store, windowRuntime: windowRuntime)
                         .environment(\.paneWindowCorners, WindowCorners.detailArea(sidebarHidden: columnVisibility == .detailOnly))
+                        .background {
+                            if store.featureFlags.compactSidebar {
+                                SidebarSplitBridge(windowRuntime: windowRuntime, store: store, railWidth: railWidth)
+                            }
+                        }
                 }
             }
         }

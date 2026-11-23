@@ -20,7 +20,7 @@ public struct SettingsView: View {
             AppearanceSettingsView(store: store)
                 .tabItem { Label("Appearance", systemImage: "paintpalette") }
 
-            ShortcutsSettingsView()
+            ShortcutsSettingsView(flags: store?.featureFlags ?? FeatureFlags(sharedProjectImages: false))
                 .tabItem { Label("Shortcuts", systemImage: "keyboard") }
 
             NotificationsSettingsView()
