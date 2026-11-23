@@ -123,6 +123,11 @@ private key) in one pair of commands, non-destructively.
    verifies. Output lands at `dist/Batty-<sha>.dmg`. Notarization round-trip
    typically takes 2–10 minutes; the script blocks via `notarytool ... --wait`.
 
+   `release.sh` deletes only its own `build/Batty.xcarchive`, `build/Export/`,
+   `build/exportOptions.plist` and `build/app-entitlements.plist`. VM results in
+   `build/ui-tests/` and `build/sparkle-tests/` and check logs in `build/checks/`
+   survive the run (#0721). Still inspect or copy them before `git worktree remove`.
+
    **Do not run this step autonomously from an agent session.** The submission
    counts as modifying a shared system (Apple's notary service).
 

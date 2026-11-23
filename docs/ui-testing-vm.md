@@ -141,6 +141,8 @@ session. Results land in `build/ui-tests/<run-id>/`: `xcodebuild-build.log` (the
 `app-warnings.log`, `sandbox-denials.log`, `crashes/` (any Batty crash reports from the
 guest), and `tart-run.log` (the host-side `tart run` output). A build failure leaves no
 `xcodebuild.log`; the runner's summary then reads `xcodebuild-build.log`.
+`scripts/release.sh` leaves `build/ui-tests/` alone (#0721), but removing the worktree
+deletes it, so copy out any results you still need first.
 
 ### Keeping screen recordings of passing tests (#0448)
 

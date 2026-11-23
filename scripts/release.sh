@@ -22,12 +22,15 @@ DIST_DIR="$REPO_ROOT/dist"
 ARCHIVE_PATH="$BUILD_DIR/$APP_NAME.xcarchive"
 EXPORT_DIR="$BUILD_DIR/Export"
 EXPORT_PLIST="$BUILD_DIR/exportOptions.plist"
+ENTITLEMENTS_PLIST="$BUILD_DIR/app-entitlements.plist"
+RELEASE_OWNED=( "$ARCHIVE_PATH" "$EXPORT_DIR" "$EXPORT_PLIST" "$ENTITLEMENTS_PLIST" )
 
 NOTARY_PROFILE="Batty-notary"
 TEAM_ID="XV8BAAVZ6V"
 SIGN_IDENTITY="Developer ID Application: Brennan Stehling ($TEAM_ID)"
 
 source "$SCRIPT_DIR/build-number.sh"
+source "$SCRIPT_DIR/release-cleanup.sh"
 
 SKIP_CREDENTIAL_CHECK=0
 for arg in "$@"; do
@@ -127,8 +130,8 @@ if ! build_number_is_newer "$BUILD_NUMBER" "$NEWEST_BUILD"; then
     exit 1
 fi
 
-print "==> Cleaning previous build"
-rm -rf "$BUILD_DIR"
+print "==> Cleaning previous release artifacts"
+release_clean_owned_artifacts "$BUILD_DIR" "${RELEASE_OWNED[@]}"
 mkdir -p "$BUILD_DIR" "$DIST_DIR"
 
 print "==> Writing export options plist"
@@ -213,7 +216,6 @@ fi
 # to already be correctly signed is harmless and produces the same end
 # state, so this is safe regardless of what -exportArchive actually does.
 print "==> Re-signing embedded agent + CLI with the Developer ID identity (#0273)"
-ENTITLEMENTS_PLIST="$BUILD_DIR/app-entitlements.plist"
 codesign -d --entitlements - --xml "$APP_PATH" 2>/dev/null > "$ENTITLEMENTS_PLIST" || true
 for rel_path in "Contents/Resources/bin/BattyBroker" "Contents/Resources/bin/batty"; do
     bin_path="$APP_PATH/$rel_path"
@@ -546,8 +548,10 @@ fileicon set "$DMG_PATH" "$APP_ICON"
 # DerivedData. Both share bundle id co.sstools.Batty, and tapping a
 # notification can route to either — producing two Batty.app dock icons.
 # Removing the .app here keeps the DMG as the canonical distributable.
-print "==> Cleaning up build artifacts ($BUILD_DIR)"
-rm -rf "$BUILD_DIR"
+# Other folders in build/ (VM runner results, check logs) belong to other
+# tools and are left alone.
+print "==> Cleaning up release artifacts in $BUILD_DIR (archive, Export, plists)"
+release_clean_owned_artifacts "$BUILD_DIR" "${RELEASE_OWNED[@]}"
 
 print
 print "Done. Distributable at:"

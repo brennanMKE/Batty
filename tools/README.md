@@ -25,6 +25,8 @@ Helpers: `vm-lib.zsh` (Tart lifecycle shared with `run-ui-tests-vm.sh`),
 Ed25519 key in a file, never the Keychain; `selftest`),
 `sparkle-update-check.py` (the checks; `sparkle-update-check-selftest.py`),
 and `appcast-item-selftest.py` for `scripts/appcast-item.sh`'s test options.
+`release-cleanup-selftest.py` checks that `scripts/release.sh` removes only its own
+paths under `build/` (`scripts/release-cleanup.sh`, #0721).
 
 ## run-ui-tests-vm.sh
 
