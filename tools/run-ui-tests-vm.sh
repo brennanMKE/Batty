@@ -426,7 +426,7 @@ log "Booting $CLONE (headless, muted, export mounted read-only)"
 boot_start=$SECONDS
 # --no-audio: without it Tart routes guest audio to the host output (e.g. the
 # notification sound from `batty notify --sound`). No UI test depends on sound.
-tart run "$CLONE" --no-graphics --no-audio --dir=run:"$EXPORT":ro >"$RESULTS_DIR/tart-run.log" 2>&1 &
+tart run "$CLONE" --no-graphics --no-audio --no-clipboard --dir=run:"$EXPORT":ro >"$RESULTS_DIR/tart-run.log" 2>&1 &
 TART_RUN_PID=$!
 boot_deadline=$(( SECONDS + BOOT_TIMEOUT_SECS ))
 until tart exec "$CLONE" true >/dev/null 2>&1; do

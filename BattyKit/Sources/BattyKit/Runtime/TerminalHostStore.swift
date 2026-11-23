@@ -335,6 +335,7 @@ public final class TerminalHostStore {
         }
         let tab = tabRuntimes.removeValue(forKey: id)?.runtime
         tabWindowMap.removeValue(forKey: id)
+        tab?.terminalDelegate.denyHeldClipboardRequests()
         view.controller = nil
         view.removeFromSuperview()
         tab?.terminalNSView = nil

@@ -248,14 +248,101 @@ struct SessionClipboardConfirmationTests {
     /// initializer is internal to `GhosttyTerminal`, so this exercises the
     /// extracted, testable `resolveClipboardConfirmationRoute` rather than
     /// the real delegate method.
-    @Test func unwiredTerminalDelegateProxyRouteDenies() {
-        let state = TerminalViewState(theme: .default)
-        let proxy = TerminalDelegateProxy(state: state)
+    @Test func unwiredRouteHoldsTheRequestUntilWired() {
+        let proxy = TerminalDelegateProxy(state: TerminalViewState(theme: .default))
         var decisions: [Bool] = []
 
         proxy.resolveClipboardConfirmationRoute(kind: .osc52Read) { decisions.append($0) }
 
-        #expect(decisions == [false])
+        #expect(decisions.isEmpty)
+        #expect(proxy.heldClipboardRequestCount == 1)
+
+        var routedKind: TerminalClipboardRequestKind?
+        proxy.onClipboardReadConfirmationRequest = { kind, decide in
+            routedKind = kind
+            decide(true)
+        }
+
+        #expect(decisions == [true])
+        #expect(isKind(routedKind, .osc52Read))
+        #expect(proxy.heldClipboardRequestCount == 0)
+    }
+
+    @Test func heldRequestsDrainInArrivalOrderWhenRouteIsWired() {
+        let proxy = TerminalDelegateProxy(state: TerminalViewState(theme: .default))
+        proxy.resolveClipboardConfirmationRoute(kind: .paste) { _ in }
+        proxy.resolveClipboardConfirmationRoute(kind: .osc52Read) { _ in }
+        proxy.resolveClipboardConfirmationRoute(kind: .osc52Write) { _ in }
+
+        var routed: [TerminalClipboardRequestKind] = []
+        proxy.onClipboardReadConfirmationRequest = { kind, decide in
+            routed.append(kind)
+            decide(false)
+        }
+
+        #expect(routed.count == 3)
+        #expect(routed.count == 3 && isKind(routed[0], .paste) && isKind(routed[1], .osc52Read) && isKind(routed[2], .osc52Write))
+    }
+
+    @Test func heldRequestsBeyondTheCapDenyImmediately() {
+        let proxy = TerminalDelegateProxy(state: TerminalViewState(theme: .default))
+        let cap = TerminalDelegateProxy.maxHeldClipboardRequests
+        var decisions: [Int: Bool] = [:]
+        for index in 0...cap {
+            proxy.resolveClipboardConfirmationRoute(kind: .osc52Read) { decisions[index] = $0 }
+        }
+
+        #expect(decisions == [cap: false])
+
+        var forwarded = 0
+        proxy.onClipboardReadConfirmationRequest = { _, decide in
+            forwarded += 1
+            decide(true)
+        }
+
+        #expect(forwarded == cap)
+    }
+
+    @Test func denyingHeldRequestsAnswersEachOnceAndClosesTheHold() {
+        let proxy = TerminalDelegateProxy(state: TerminalViewState(theme: .default))
+        var decisions: [Bool] = []
+        proxy.resolveClipboardConfirmationRoute(kind: .osc52Read) { decisions.append($0) }
+        proxy.resolveClipboardConfirmationRoute(kind: .osc52Write) { decisions.append($0) }
+
+        proxy.denyHeldClipboardRequests()
+        proxy.denyHeldClipboardRequests()
+
+        #expect(decisions == [false, false])
+
+        var late: [Bool] = []
+        proxy.resolveClipboardConfirmationRoute(kind: .osc52Read) { late.append($0) }
+        #expect(late == [false])
+
+        var handlerCalls = 0
+        proxy.onClipboardReadConfirmationRequest = { _, decide in
+            handlerCalls += 1
+            decide(true)
+        }
+        #expect(handlerCalls == 0)
+    }
+
+    @Test func rewiringDoesNotReplayDrainedRequests() {
+        let proxy = TerminalDelegateProxy(state: TerminalViewState(theme: .default))
+        proxy.resolveClipboardConfirmationRoute(kind: .osc52Read) { _ in }
+
+        var callsA = 0
+        var callsB = 0
+        proxy.onClipboardReadConfirmationRequest = { _, decide in
+            callsA += 1
+            decide(false)
+        }
+        proxy.onClipboardReadConfirmationRequest = { _, decide in
+            callsB += 1
+            decide(false)
+        }
+
+        #expect(callsA == 1)
+        #expect(callsB == 0)
     }
 
     @Test func wiredTerminalDelegateProxyRouteForwardsToTheHandler() {
