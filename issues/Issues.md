@@ -274,6 +274,8 @@ Builds and unit tests run on the host; **UI tests run only in the Tart VM** (`AG
 - **Switches:** `--verbose` or `BATTY_CHECK_VERBOSE=1` streams the full log as well (for humans only); `BATTY_CHECK_SUMMARY=0` prints the raw digest instead of the Haiku summary; `BATTY_CHECK_SUMMARY_TIMEOUT` (seconds, default 90) bounds the Haiku call. Exit codes and the `CHECK` line never depend on Haiku.
 - **Run the VM runner in the foreground or with the Bash tool's `run_in_background`** — not with `&`, `nohup` or a redirect to a file — so its time is measurable for the work log. One VM at a time.
 - **Known flaky tests** may fail on unrelated changes. Add a test here only with the run ids that show it flaking, and file an issue to fix it.
+  - `BattyUITests/ClipboardConfirmationTests/testAskDenyIsRememberedForTheSession` and `.../testAskDialogStaysUpThroughABurst`: failed in `20261122-161240-36378`, passed in `20261122-182546-59972` (#0720).
+  - `BattyUITests/BackgroundImagesWindowTests/testReturnPicksTheSelectedImageAndClosesThePicker`: failed in `20261119-214126-8580` and `20261122-161240-36378`, passed in `20261119-222504-63894` and `20261122-182546-59972` (#0701).
 - Unit tests follow `AGENTS.md` "Asynchronous tests" — never pass by waiting.
 
 ### Daily UI run
